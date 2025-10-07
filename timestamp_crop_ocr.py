@@ -47,8 +47,9 @@ for filename in folder_contents:
 
     img = cv2.imread(filepath)
     cropped_img = return_timestamp_cropped_img(img)
-    cv2.imshow("cropped", cropped_img)
+    # cv2.imshow("cropped", cropped_img)
     print(easyocr_frame(cropped_img))
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    input("Press enter to continue")
 # 760 100 / 1150 1060
