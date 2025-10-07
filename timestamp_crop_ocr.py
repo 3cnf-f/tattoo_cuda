@@ -7,7 +7,7 @@ reader = easyocr.Reader(['en'], gpu=True)  # Set gpu=False if no GPU/CUDA
 
 folder_base = "150136"
 folder = f"../{folder_base}_4fps_sound/"
-json_file = f"{folder}{folder_base}_4fps_timstamps.json"
+json_file = f"{folder}{folder_base}_4fps_timestamps.json"
 
 folder_contents= os.listdir(folder)
 folder_contents.sort()
