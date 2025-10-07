@@ -87,8 +87,9 @@ def g_wordlist_draw_boxes(result,cv2_img):
     # poly_gone_away=poly_gone_away.reshape((-1,1,2))
     # Calculate position for text "hello" above the top of the bounding box
     min_x = min(vertex[0] for vertex in vertices)
+    max_x = max(vertex[0] for vertex in vertices)
     min_y = min(vertex[1] for vertex in vertices)
-    text_pos = (int(max_x-min_x), int(min_y - 15))  # 5 pixels above the top edge
+    text_pos = (int(min_x), int(min_y - 15))  # 5 pixels above the top edge
     # Draw the text "hello" above the polygon
     # Using HERSHEY_SIMPLEX font, scale 0.5, blue color (255,0,0), thickness 1
     cv2.putText(cv2_img,word_text, text_pos, cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 1)
@@ -106,17 +107,20 @@ for filename in folder_contents:
     filepath=folder+filename
 
 
-    google_doc_word_list = g_cv_doc_text_detect(filepath, api_key)
 
     thisfileresults = []
 
 
-    img = cv2.imread(filepath)
+    with open(filepath, 'rb') as f:
+        file_contents = f.read()
 
+
+    img = cv2.imread(filepath)
+    google_doc_word_list = g_cv_doc_text_detect(file_contents, api_key)
     for this_result in google_doc_word_list:
         # this_easyocr_dict = {'filename':filename,'bounding_box': str(this_result[0]),'text': str(this_result[1]), 'confidence': str(this_result[2])}
         thisfileresults.append(this_result)
-        tmpimg = wordlist_draw_boxes(this_result, img)
+        tmpimg = g_wordlist_draw_boxes(this_result, img)
 
 
 
