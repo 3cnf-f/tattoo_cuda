@@ -3,6 +3,9 @@ import os
 import easyocr
 import json
 
+
+# this program crops the timestamp on all frames that are in a specified and does ocr on them
+
 reader = easyocr.Reader(['en'], gpu=True)  # Set gpu=False if no GPU/CUDA
 
 folder_base = "145147"

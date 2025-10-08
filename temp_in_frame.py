@@ -1,4 +1,5 @@
 import cv2
+import re
 import os
 import easyocr
 import json
@@ -6,7 +7,8 @@ import numpy as np
 from google.api_core.client_options import ClientOptions
 from google.cloud import vision
 
-# reader = easyocr.Reader(['en'], gpu=True)  # Set gpu=False if no GPU/CUDA
+# this program gets a list of fils in a folder and iterates over them, sending each to google cloud vision for ocr
+
 
 folder_base = "145147"
 folder = f"../{folder_base}_4fps_sound/"
@@ -14,14 +16,55 @@ json_file = f"{folder}{folder_base}_4fps_ocr_whole.json"
 
 folder_contents= os.listdir(folder)
 folder_contents.sort()
-file = folder_contents[0]
 
-def easyocr_frame(in_frame):
-    result = reader.readtext(in_frame, allowlist='0123456789:.')  # Focus on numbers/timestamps
+
+def get_coords_from_google(word):
+    """
+    Converts a Google Cloud Vision word bounding box to NumPy/OpenCV slices and min/max coords.
     
+    Args:
+        word: A Word object from Google Cloud Vision's text annotation.
     
+    Returns:
+        dict: {
+            'slice_y': slice(y_min, y_max),
+            'slice_x': slice(x_min, x_max),
+            'x_min': int, 'x_max': int,
+            'y_min': int, 'y_max': int,
+            'bottom_left': (x_min, y_max)  # For cv2.putText org parameter
+        }
+    """
+    vertices = word.bounding_box.vertices
+    if not vertices:
+        raise ValueError("Bounding box has no vertices.")
     
-    return result
+    x_coords = [v.x for v in vertices]
+    y_coords = [v.y for v in vertices]
+    
+    x_min = min(x_coords)
+    x_max = max(x_coords)
+    y_min = min(y_coords)
+    y_max = max(y_coords)
+    
+    # Convert to integers, rounding if necessary (handles float coordinates)
+    x_min = int(round(x_min))
+    x_max = int(round(x_max))
+    y_min = int(round(y_min))
+    y_max = int(round(y_max))
+    
+    # Ensure valid bounds (x_min < x_max, y_min < y_max)
+    if x_min >= x_max or y_min >= y_max:
+        raise ValueError("Invalid bounding box dimensions.")
+    
+    return {
+        'slice_y': slice(y_min, y_max),
+        'slice_x': slice(x_min, x_max),
+        'x_min': x_min,
+        'x_max': x_max,
+        'y_min': y_min,
+        'y_max': y_max,
+        'bottom_left': (x_min, y_max)
+    }
 
 def g_cv_doc_text_detect(file_contents, api_key):
     """Detects text in the image file and returns words with confidence scores."""
@@ -58,13 +101,14 @@ def g_cv_doc_text_detect(file_contents, api_key):
                         symbol.text for symbol in word.symbols
                     ])
                     confidence = word.confidence
-                    vertices = [(vertex.x, vertex.y)
-                                for vertex in word.bounding_box.vertices]
+                    cv_2_bounding_box = get_coords_from_google(word)
                     
                     word_data = {
                         "word": word_text,
                         "confidence": confidence,
-                        "bounding_box": vertices
+                        "cv2_bounding_box": cv_2_bounding_box,
+                        "original_bounding_box": word.bounding_box.vertices
+                        
                     }
                     all_word_data.append(word_data)
                                     
@@ -72,27 +116,13 @@ def g_cv_doc_text_detect(file_contents, api_key):
 
     return all_word_data
 
-def g_wordlist_draw_boxes(result,cv2_img):
-    vertices = result["bounding_box"]
-    word_text = result["word"]
-    confidence = result["confidence"]
+def g_wordlist_draw_annot(word_text,x_min,y_min,x_max,y_max,cv2_img):
+    print(word_text,x_min,y_min,x_max,y_max,cv2_img)
 
-    # Convert vertices to numpy array of integers for OpenCV
-    # Each point is [x, y], reshaped to (-1, 1, 2) for polylines
-    pts = np.array([[vertex[0], vertex[1]] for vertex in vertices], np.int32)
-    pts = pts.reshape((-1, 1, 2))
-    # Draw the polygon outline on the image
-    # True for closed shape, (0,255,0) for green color, 1 for thickness
-    cv2.polylines(cv2_img, [pts], True, (0, 255, 0), 1)
-    # poly_gone_away=poly_gone_away.reshape((-1,1,2))
-    # Calculate position for text "hello" above the top of the bounding box
-    min_x = min(vertex[0] for vertex in vertices)
-    max_x = max(vertex[0] for vertex in vertices)
-    min_y = min(vertex[1] for vertex in vertices)
-    text_pos = (int(min_x), int(min_y - 15))  # 5 pixels above the top edge
     # Draw the text "hello" above the polygon
     # Using HERSHEY_SIMPLEX font, scale 0.5, blue color (255,0,0), thickness 1
-    cv2.putText(cv2_img,word_text, text_pos, cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 1)
+    cv2.rectangle(cv2_img, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
+    cv2.putText(cv2_img,word_text, (int((x_min+x_max)/2), y_min-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 1)
 
     return cv2_img
 
@@ -101,34 +131,42 @@ def g_wordlist_draw_boxes(result,cv2_img):
 
 api_key = os.environ.get('gooog')
 
-
-output_list = []
+allframesdict ={}
 for filename in folder_contents:
     filepath=folder+filename
+    framenumber = re.search("[\d_\w]+([\d]{6})\.png", filename).group(1)
+    allframesdict[framenumber]={}
+    allframesdict[framenumber]['filename'] = filename
+    allframesdict[framenumber]['framenumber'] = framenumber
+    
 
 
-
-    thisfileresults = []
 
 
     with open(filepath, 'rb') as f:
         file_contents = f.read()
+    
 
 
     img = cv2.imread(filepath)
     google_doc_word_list = g_cv_doc_text_detect(file_contents, api_key)
+    result_dict = {}
     for this_result in google_doc_word_list:
-        # this_easyocr_dict = {'filename':filename,'bounding_box': str(this_result[0]),'text': str(this_result[1]), 'confidence': str(this_result[2])}
-        thisfileresults.append(this_result)
-        tmpimg = g_wordlist_draw_boxes(this_result, img)
+        word = this_result['word'].replace('\n', '')
+        result_dict[word]={}
+        result_dict[word]['cv2_bounding_box']=this_result['cv2_bounding_box']
+        result_dict[word]['confidence'] = this_result['confidence']
+        result_dict[word]['original_bounding_box'] = this_result['original_bounding_box']
+        print(f"word:{word} with confidence:{int(this_result['confidence']*100)}" )
+        #add to image:
+        img=g_wordlist_draw_annot(word,this_result['cv2_bounding_box']['x_min'],this_result['cv2_bounding_box']['y_min'],this_result['cv2_bounding_box']['x_max'],this_result['cv2_bounding_box']['y_max'],img)
 
+        
+        
 
-
-        cv2.imshow("test", tmpimg)
-        print(this_result)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-    easyocr_dict = {'filename':filename,'result_list': easy_ocr_result}
-# 760 100 / 1150 1060
+    cv2.imshow("image", img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    input("Press enter to continue")
 # with open(json_file, "w", encoding="utf-8") as f:
 #     json.dump(output_list, f, ensure_ascii=False, indent=4)
