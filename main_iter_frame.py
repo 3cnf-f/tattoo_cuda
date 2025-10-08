@@ -122,17 +122,24 @@ def g_wordlist_draw_annot(word_text,x_min,y_min,x_max,y_max,cv2_img):
     # Draw the text "hello" above the polygon
     # Using HERSHEY_SIMPLEX font, scale 0.5, blue color (255,0,0), thickness 1
     cv2.rectangle(cv2_img, (x_min, y_min), (x_max, y_max), (0, 0, 255), 2)
-    cv2.putText(cv2_img,word_text, (int((x_min+x_max)/2), y_min-10), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 0, 255), 1)
+    cv2.putText(cv2_img,word_text, (int((x_min+x_max)/2), y_min-5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
 
     return cv2_img
 
+def is_it_a_temp(word_text,cv2_bounding_box):
+    resultatata = re.search("([\d]{2})([\.]{0,1})([\d]{1})", word_text)
+    
+    if resultatata and (resultatata.group(1) != "40" ):
+        
+        return True, resultatata.group(1)+"."+resultatata.group(3)
 
+    return False,None
 
 
 api_key = os.environ.get('gooog')
 
 allframesdict ={}
-for filename in folder_contents:
+for filename in folder_contents[:3]:
     filepath=folder+filename
     framenumber = re.search("[\d_\w]+([\d]{6})\.png", filename).group(1)
     allframesdict[framenumber]={}
@@ -152,14 +159,23 @@ for filename in folder_contents:
     google_doc_word_list = g_cv_doc_text_detect(file_contents, api_key)
     result_dict = {}
     for this_result in google_doc_word_list:
-        word = this_result['word'].replace('\n', '')
+        word = this_result['word'].strip().replace("\n","").replace(" ","")
         result_dict[word]={}
         result_dict[word]['cv2_bounding_box']=this_result['cv2_bounding_box']
         result_dict[word]['confidence'] = this_result['confidence']
         result_dict[word]['original_bounding_box'] = this_result['original_bounding_box']
         print(f"word:{word} with confidence:{int(this_result['confidence']*100)}" )
         #add to image:
-        img=g_wordlist_draw_annot(word,this_result['cv2_bounding_box']['x_min'],this_result['cv2_bounding_box']['y_min'],this_result['cv2_bounding_box']['x_max'],this_result['cv2_bounding_box']['y_max'],img)
+        is_a_temp,parsedword = is_it_a_temp(this_result['word'],this_result['cv2_bounding_box'])
+        if is_a_temp:
+            img=g_wordlist_draw_annot(parsedword,this_result['cv2_bounding_box']['x_min'],this_result['cv2_bounding_box']['y_min'],this_result['cv2_bounding_box']['x_max'],this_result['cv2_bounding_box']['y_max'],img)
+            result_dict[word]['is_atemp'] = True
+            result_dict[word]['parsedword'] = parsedword
+        else:
+            result_dict[word]['is_atemp'] = False
+
+    allframesdict[framenumber]['result_dict'] = result_dict
+
 
         
         
@@ -167,6 +183,8 @@ for filename in folder_contents:
     cv2.imshow("image", img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
+    print(result_dict)
     input("Press enter to continue")
-# with open(json_file, "w", encoding="utf-8") as f:
-#     json.dump(output_list, f, ensure_ascii=False, indent=4)
+    input("Press enter again")
+with open(json_file, "w", encoding="utf-8") as f:
+    json.dump(output_list, f, ensure_ascii=False, indent=4)
