@@ -117,7 +117,6 @@ def g_cv_doc_text_detect(file_contents, api_key):
     return all_word_data
 
 def g_wordlist_draw_annot(word_text,x_min,y_min,x_max,y_max,cv2_img):
-    print(word_text,x_min,y_min,x_max,y_max,cv2_img)
 
     # Draw the text "hello" above the polygon
     # Using HERSHEY_SIMPLEX font, scale 0.5, blue color (255,0,0), thickness 1
@@ -140,7 +139,10 @@ api_key = os.environ.get('gooog')
 
 allframesdict ={}
 for filename in folder_contents[:3]:
+    if not filename.endswith('.png'):
+        continue
     filepath=folder+filename
+    print(filename)
     framenumber = re.search("[\d_\w]+([\d]{6})\.png", filename).group(1)
     allframesdict[framenumber]={}
     allframesdict[framenumber]['filename'] = filename
@@ -157,13 +159,9 @@ for filename in folder_contents[:3]:
 
     img = cv2.imread(filepath)
     google_doc_word_list = g_cv_doc_text_detect(file_contents, api_key)
-    result_dict = {}
+    result_list = []
     for this_result in google_doc_word_list:
         word = this_result['word'].strip().replace("\n","").replace(" ","")
-        result_dict[word]={}
-        result_dict[word]['cv2_bounding_box']=this_result['cv2_bounding_box']
-        result_dict[word]['confidence'] = this_result['confidence']
-        result_dict[word]['original_bounding_box'] = this_result['original_bounding_box']
         print(f"word:{word} with confidence:{int(this_result['confidence']*100)}" )
         #add to image:
         is_a_temp,parsedword = is_it_a_temp(this_result['word'],this_result['cv2_bounding_box'])
@@ -173,8 +171,9 @@ for filename in folder_contents[:3]:
             result_dict[word]['parsedword'] = parsedword
         else:
             result_dict[word]['is_atemp'] = False
+        result_dict={'word':word,'cv2_bounding_box':this_result['cv2_bounding_box'],'confidence':this_result['confidence'],'original_bounding_box':this_result['original_bounding_box'],'is_a_temp':is_a_temp,'parsedword':parsedword}
 
-    allframesdict[framenumber]['result_dict'] = result_dict
+    result_list.append(result_dict)
 
 
         
@@ -183,8 +182,9 @@ for filename in folder_contents[:3]:
     cv2.imshow("image", img)
     cv2.waitKey(0)
     cv2.destroyAllWindows()
-    print(result_dict)
+    print(filename)
+    print(allframesdict[framenumber]['result_dict'].keys())
     input("Press enter to continue")
     input("Press enter again")
 with open(json_file, "w", encoding="utf-8") as f:
-    json.dump(output_list, f, ensure_ascii=False, indent=4)
+    json.dump(result_list, f, ensure_ascii=False, indent=4)
